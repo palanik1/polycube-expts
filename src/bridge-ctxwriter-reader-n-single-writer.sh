@@ -44,21 +44,6 @@ function del_ctxwriter {
 	done
 }
 
-function add_ctxwriter {
-	for i in `seq 1 $1`;
-	do
-		polycubectl ctxwriter add cw$i type=XDP_SKB loglevel=info
-	done
-}
-
-function del_ctxwriter {
-	for i in `seq 1 $1`;
-	do
-		polycubectl ctxwriter del cw$i
-	done
-}
-
-
 function helloworld_add_port {
 	polycubectl helloworld $1 ports add $2
 	polycubectl helloworld $1 ports $2 set peer=$2
@@ -165,10 +150,10 @@ function delete_link {
 }
 
 #Set up following topology
-# veth1 <-> cw1 <-> cw2... <-> cwn+2 <-> br1  <-> veth2
+# veth1 <-> cw1 <-> cw2... <-> cwn+1 <-> br1  <-> veth2
 function setup_expt {
     echo "Arg" $1
-    j=$((${1}+2))
+    j=$((${1}+1))
     echo "j=" ${j}
 
     add_simplebridges 1
@@ -178,23 +163,21 @@ function setup_expt {
     polycubectl cw1 ports add to_veth1 peer=veth1
     polycubectl cw1 set action=WRITE
 
-    polycubectl cw${j} ports add to_br1
-
-    polycubectl br1 ports add to_cw${j}
-
-    polycubectl connect br1:to_cw${j} cw${j}:to_br1
+    # polycubectl cw${j} ports add to_br1
+    # polycubectl br1 ports add to_cw${j}
+    # polycubectl connect br1:to_cw${j} cw${j}:to_br1
     
     polycubectl br1 ports add to_veth2 peer=veth2
 
-    connect_ctxwriters $((${1}+1))
+    connect_ctxwriters $((${1}))
     k=$((${1}+1))
     for i in $(seq 2 ${k});
         do
 	    set_action_ctxwriter ${i} READ
 	done
 
-    polycubectl cw${j} set action=WRITE
-    #connect_ctxwriter_with_bridge ${j}
+    #polycubectl cw${j} set action=WRITE
+    connect_ctxwriter_with_bridge ${j}
 
     polycubectl cubes show
 

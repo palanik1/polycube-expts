@@ -30,33 +30,21 @@ function del_helloworld {
 	done
 }
 
-function add_ctxwriters {
+function add_mapwriters {
 	for i in `seq 1 $1`;
 	do
-		polycubectl ctxwriter add cw$i type=XDP_SKB loglevel=info
+		polycubectl mapwriter add mw$i type=XDP_SKB loglevel=info
 	done
 }
 
-function del_ctxwriter {
+function del_mapwriter {
 	for i in `seq 1 $1`;
 	do
-		polycubectl ctxwriter del cw$i
+		polycubectl mapwriter del mw$i
 	done
 }
 
-function add_ctxwriter {
-	for i in `seq 1 $1`;
-	do
-		polycubectl ctxwriter add cw$i type=XDP_SKB loglevel=info
-	done
-}
 
-function del_ctxwriter {
-	for i in `seq 1 $1`;
-	do
-		polycubectl ctxwriter del cw$i
-	done
-}
 
 
 function helloworld_add_port {
@@ -69,25 +57,25 @@ function simplebridge_add_port {
 	polycubectl simplebridge $1 ports $2 set peer=$2
 }
 
-function ctxwriter_add_port {
-	polycubectl ctxwriter $1 ports add $2
-	polycubectl ctxwriter $1 ports $2 set peer=$2
+function mapwriter_add_port {
+	polycubectl mapwriter $1 ports add $2
+	polycubectl mapwriter $1 ports $2 set peer=$2
 }
 
 
-function connect_ctxwriter_with_next {
+function connect_mapwriter_with_next {
     i=${1}
     j=$((${i}+1))
-	polycubectl cw${i} ports add to_cw${j}
-	polycubectl cw${j} ports add to_cw${i}
-	polycubectl connect cw${i}:to_cw${j} cw${j}:to_cw${i}
+	polycubectl mw${i} ports add to_mw${j}
+	polycubectl mw${j} ports add to_mw${i}
+	polycubectl connect mw${i}:to_mw${j} mw${j}:to_mw${i}
 }
 
-function connect_ctxwriters {
+function connect_mapwriters {
 
     for i in `seq 1 $1`;
     do
-	connect_ctxwriter_with_next $i
+	connect_mapwriter_with_next $i
     done
 }
 
@@ -99,17 +87,17 @@ function connect_helloworld_with_bridge {
 }
 
 
-function connect_ctxwriter_with_bridge {
+function connect_mapwriter_with_bridge {
     i=$1
-    polycubectl cw${i} ports add to_br1
-    polycubectl br1 ports add to_cw${i}
-    polycubectl connect cw${i}:to_br1 br1:to_cw${i}
+    polycubectl mw${i} ports add to_br1
+    polycubectl br1 ports add to_mw${i}
+    polycubectl connect mw${i}:to_br1 br1:to_mw${i}
 }
 
-function set_action_ctxwriter {
+function set_action_mapwriter {
     i=$1
     act=$2
-    polycubectl cw${i} set action=${act}
+    polycubectl mw${i} set action=${act}
 }
 
 function create_veth {
@@ -165,36 +153,34 @@ function delete_link {
 }
 
 #Set up following topology
-# veth1 <-> cw1 <-> cw2... <-> cwn+2 <-> br1  <-> veth2
+# veth1 <-> mw1 <-> mw2... <-> mwn+1 <-> br1  <-> veth2
 function setup_expt {
     echo "Arg" $1
-    j=$((${1}+2))
+    j=$((${1}+1))
     echo "j=" ${j}
 
     add_simplebridges 1
 
-    add_ctxwriters ${j}
+    add_mapwriters ${j}
 
-    polycubectl cw1 ports add to_veth1 peer=veth1
-    polycubectl cw1 set action=WRITE
+    polycubectl mw1 ports add to_veth1 peer=veth1
+    polycubectl mw1 set action=WRITE
 
-    polycubectl cw${j} ports add to_br1
-
-    polycubectl br1 ports add to_cw${j}
-
-    polycubectl connect br1:to_cw${j} cw${j}:to_br1
+    # polycubectl mw${j} ports add to_br1
+    # polycubectl br1 ports add to_mw${j}
+    # polycubectl connect br1:to_mw${j} mw${j}:to_br1
     
     polycubectl br1 ports add to_veth2 peer=veth2
 
-    connect_ctxwriters $((${1}+1))
+    connect_mapwriters $((${1}))
     k=$((${1}+1))
     for i in $(seq 2 ${k});
         do
-	    set_action_ctxwriter ${i} READ
+	    set_action_mapwriter ${i} READ
 	done
 
-    polycubectl cw${j} set action=WRITE
-    #connect_ctxwriter_with_bridge ${j}
+    #polycubectl mw${j} set action=WRITE
+    connect_mapwriter_with_bridge ${j}
 
     polycubectl cubes show
 
