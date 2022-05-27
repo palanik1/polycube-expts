@@ -106,7 +106,7 @@ function create_veth {
 		sudo ip link set veth${i}_ netns ns${i}
 		sudo ip netns exec ns${i} ip link set dev veth${i}_ up
 		sudo ip link set dev veth${i} up
-		sudo ip netns exec ns${i} ifconfig veth${i}_ 10.0.0.${i}/24
+		sudo ip netns exec ns${i} ifconfig veth${i}_ ${2}.0.0.${i}/24
 	done
 }
 
@@ -121,7 +121,7 @@ function create_veth_no_ipv6 {
 		sudo ip netns exec ns${i} sysctl -w net.ipv6.conf.veth${i}_.disable_ipv6=1
 		sudo ip netns exec ns${i} ip link set dev veth${i}_ up
 		sudo ip link set dev veth${i} up
-		sudo ip netns exec ns${i} ifconfig veth${i}_ 10.0.0.${i}/24
+		sudo ip netns exec ns${i} ifconfig veth${i}_ ${2}.0.0.${i}/24
 	done
 }
 
@@ -183,16 +183,17 @@ function setup_expt {
 
     #read -n 1 -s
 
-    sudo ip netns exec ns1 ping 10.0.0.2 -c 5
-    sudo ip netns exec ns2 ping 10.0.0.1 -c 5
+    sudo ip netns exec ns1 ping ${2}.0.0.2 -c 5
+    sudo ip netns exec ns2 ping ${2}.0.0.1 -c 5
 
     #run iperf server in ns2
-    sudo ip netns exec ns2 iperf3 -s &
+    sudo ip netns exec ns2 iperf3 -s -D &
 
     sleep 2
 
     #run iper client in ns1
-    sudo ip netns exec ns1 iperf3 -c 10.0.0.2 -t 60 
+    sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60 -A4,4 -P 64
+    #sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60 -A4,5 -P 64
 
     cleanup $1
 
@@ -205,7 +206,7 @@ function cleanup {
 }
 
 
-setup_expt $1
+setup_expt $1 $2
 
 #trap cleanup EXIT
 
