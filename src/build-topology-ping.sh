@@ -10,8 +10,8 @@ do
     sudo ip link add veth${i}_ type veth peer name veth${i}
     sudo ip link set veth${i}_ netns ns${i}
     sudo ip netns exec ns${i} ip link set dev veth${i}_ up
-    sudo ip netns exec ns${i} ip link set dev lo up
     sudo ip link set dev veth${i} up
-    sudo ip netns exec ns${i} ifconfig veth${i}_ 40.0.0.${i}/24
-
+    sudo ip netns exec ns${i} ip link set dev lo up
+    sudo ifconfig veth${i} 40.0.${i}.1/24
+    sudo ip netns exec ns${i} ifconfig veth${i}_ 40.0.${i}.2/24
 done

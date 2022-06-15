@@ -1,5 +1,92 @@
 #!/bin/bash -x 
 
+function setup_bridge_with_module {
+   polycubectl ${1} add hw1 type=XDP_SKB loglevel=debug
+   #polycubectl hw1 set action=forward
+
+   polycubectl simplebridge add br1 type=XDP_SKB loglevel=debug
+
+   # add ports (only two are supported)
+   polycubectl hw1 ports add port1 peer=veth1
+   polycubectl hw1 ports add to_br1
+
+   polycubectl br1 ports add to_hw1
+   polycubectl connect hw1:to_br1 br1:to_hw1
+
+
+   polycubectl br1 ports add to_veth2 peer=veth2
+
+   sudo ip netns exec ns1 ping ${2}.0.0.2 -c 5
+   sudo ip netns exec ns2 ping ${2}.0.0.1 -c 5
+
+   #run iperf server in ns2
+   sudo ip netns exec ns2 iperf3 -s &
+
+   sleep 2
+
+   #run iper client in ns1
+   sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60 
+
+
+   #delete
+   polycubectl del br1
+
+   polycubectl del hw1
+
+}
+
+function setup_bridge {
+
+   polycubectl simplebridge add br1 type=XDP_SKB loglevel=debug
+
+   polycubectl br1 ports add to_veth1 peer=veth1
+   polycubectl br1 ports add to_veth2 peer=veth2
+
+   sudo ip netns exec ns1 ping ${1}.0.0.2 -c 5
+   sudo ip netns exec ns2 ping ${1}.0.0.1 -c 5
+
+   #run iperf server in ns2
+   sudo ip netns exec ns2 iperf3 -s &
+
+   sleep 2
+
+   #run iper client in ns1
+   sudo ip netns exec ns1 iperf3 -c ${1}.0.0.2 -t 60 
+
+
+   #delete
+   polycubectl del br1
+ 
+}
+
+
+function setup_helloworld {
+
+   polycubectl helloworld add hw1 type=XDP_SKB loglevel=debug
+
+   polycubectl hw1 set action=forward
+   
+   polycubectl hw1 ports add to_veth1 peer=veth1
+   polycubectl hw1 ports add to_veth2 peer=veth2
+
+   sudo ip netns exec ns1 ping ${1}.0.0.2 -c 5
+   sudo ip netns exec ns2 ping ${1}.0.0.1 -c 5
+
+   #run iperf server in ns2
+   sudo ip netns exec ns2 iperf3 -s &
+
+   sleep 2
+
+   #run iper client in ns1
+   sudo ip netns exec ns1 iperf3 -c ${1}.0.0.2 -t 60 
+
+
+   #delete
+   polycubectl del hw1
+ 
+}
+
+
 
 function add_simplebridges {
 	for i in `seq 1 $1`;
@@ -295,3 +382,4 @@ function delete_link {
 		sudo ip link del link${i}1
 	done
 }
+
