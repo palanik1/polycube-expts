@@ -1,0 +1,78 @@
+source ./utils.sh
+
+#Set up following topology
+# veth1 <-> pp1 <-> pp2... <-> ppn <-> br1  <-> veth2
+function setup_expt {
+    echo "Arg" $1
+    j=${1}
+    
+    echo "j=" ${1}
+
+    prefix="pp"
+
+    #start_polycube
+
+    #sleep 5
+    
+    add_simplebridges 1 XDP_SKB
+
+    add_modules "pktprocessing" ${prefix} ${j} XDP_SKB
+
+    polycubectl ${prefix}1 ports add to_veth1 peer=veth1
+
+
+    # polycubectl pp${j} ports add to_br1
+    # polycubectl br1 ports add to_pp${j}
+    # polycubectl connect br1:to_pp${j} pp${j}:to_br1
+    
+    polycubectl br1 ports add to_veth2 peer=veth2
+
+    connect_modules $((${1}-1)) ${prefix}
+    k=$((${1}+1))
+
+    connect_module_with_bridge ${j} ${prefix}
+
+    polycubectl cubes show
+
+    #read -n 1 -s
+
+    sudo ip netns exec ns1 ping ${2}.0.0.2 -c 5
+    sudo ip netns exec ns2 ping ${2}.0.0.1 -c 5
+
+    #run iperf server in ns2 
+    sudo ip netns exec ns2 iperf3 -s -D -p 5101 &
+    #sudo ip netns exec ns2 iperf3 -s -D -p 5102 &
+
+    sleep 2
+
+    #run iper client in ns1
+    #sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60 -A4,4 -P 64 -i 0
+    #sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60 -A4,5 -P 64
+
+    #TCP
+    #sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60
+
+    #UDP
+    #sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -t 60 -u -b 0
+
+    #set pkt size to 200B
+    sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2  -p 5101 -t 60 -u -b 0 
+    #sudo ip netns exec ns1 iperf3 -c ${2}.0.0.2 -T s2 -p 5102 -t 60 -u -l 64B -b 0 -A2,3 
+    
+    cleanup "packetprocessing" ${prefix} ${j}
+
+}
+
+function cleanup {
+    #delete
+    polycubectl del br1
+    del_modules ${1} ${2} ${3}
+    #kill_polycube
+}
+
+
+setup_expt $1 $2
+
+
+
+
