@@ -1,10 +1,40 @@
 #!/bin/bash -x 
 
+function start_polycube {
+    kill_polycube
+    polycubed --loglevel=debug &
+}
+
+function kill_polycube {
+    killall polycubed
+}
+
+function run_iperf3_server {
+    ns_id=${1}
+    port=${2}
+    ip netns exec ${ns_id} iperf3 -s -D -p ${port} &
+
+}
+
+function run_iperf3_client {
+    ns_id=${1}
+    server_ip=${2}
+    port=${3}
+    mode=${4}
+    if [ -z "${mode}" ]
+    then
+	ip netns exec ${ns_id} iperf3 -c ${server_ip}  -p ${port} -t 60  -l 64B -b 0
+    else
+	ip netns exec ${ns_id} iperf3 -c ${server_ip}  -p ${port} -t 60 -u -l 64B -b 0 
+    fi
+    
+}
+
 function setup_bridge_with_module {
-   polycubectl ${1} add hw1 type=XDP_SKB loglevel=debug
+   polycubectl ${1} add hw1 type=XDP_SKB loglevel=off
    #polycubectl hw1 set action=forward
 
-   polycubectl simplebridge add br1 type=XDP_SKB loglevel=debug
+   polycubectl simplebridge add br1 type=XDP_SKB loglevel=off
 
    # add ports (only two are supported)
    polycubectl hw1 ports add port1 peer=veth1
@@ -37,7 +67,7 @@ function setup_bridge_with_module {
 
 function setup_bridge {
 
-   polycubectl simplebridge add br1 type=XDP_SKB loglevel=debug
+   polycubectl simplebridge add br1 type=TC loglevel=off
 
    polycubectl br1 ports add to_veth1 peer=veth1
    polycubectl br1 ports add to_veth2 peer=veth2
@@ -61,8 +91,9 @@ function setup_bridge {
 
 
 function setup_helloworld {
-
-   polycubectl helloworld add hw1 type=XDP_SKB loglevel=debug
+   #polycubectl helloworld add hw1 type=TC loglevel=off
+    #polycubectl helloworld add hw1 type=TC loglevel=off
+    polycubectl helloworld add hw1 type=TC loglevel=off
 
    polycubectl hw1 set action=forward
    
@@ -79,19 +110,51 @@ function setup_helloworld {
 
    #run iper client in ns1
    sudo ip netns exec ns1 iperf3 -c ${1}.0.0.2 -t 60 
-
+   #udp
+   #sudo ip netns exec ns1 iperf3 -c ${1}.0.0.2 -t 60 -u -b 0 
 
    #delete
    polycubectl del hw1
- 
+}
+
+function add_modules {
+    echo "ADD MODULES MODULE_TYPE ${1} MODULE_PREFIX ${2} COUNT ${3} MODE ${4}"
+    prefix=${2}
+    MODE=${4}
+    for i in `seq 1 $3`;
+    do
+	if [[ ${MODE} = "TC" ]]
+	then
+	    polycubectl ${1} add ${prefix}$i type=TC loglevel=off
+	    #polycubectl ${1} add ${prefix}$i type=TC loglevel=debug
+	else
+	    polycubectl ${1} add ${prefix}$i type=XDP_SKB loglevel=off
+	    #polycubectl ${1} add ${prefix}$i type=XDP_SKB loglevel=debug
+	fi
+	
+    done
 }
 
 
+function del_modules {
+    echo "DELETE MODULES MODULE_TYPE ${1} MODULE_PREFIX ${2} COUNT ${3}"
+    prefix=${2}
+    for i in `seq 1 $3`;
+	do
+		polycubectl ${1} del ${prefix}$i 
+	done
+}
+
 
 function add_simplebridges {
-	for i in `seq 1 $1`;
+    mode=${2}
+    if [ -z "${mode}" ]
+    then mode=TC
+    fi
+    
+    for i in `seq 1 $1`;
 	do
-		polycubectl simplebridge add br$i type=XDP_SKB loglevel=info
+		polycubectl simplebridge add br$i type=${mode} loglevel=off
 	done
 }
 
@@ -120,7 +183,7 @@ function del_helloworld {
 function add_ctxwriters {
 	for i in `seq 1 $1`;
 	do
-		polycubectl ctxwriter add cw$i type=XDP_SKB loglevel=info
+		polycubectl ctxwriter add cw$i type=XDP_SKB loglevel=off
 	done
 }
 
@@ -128,14 +191,15 @@ function add_ctxwriters {
 function add_ctxwriters_independant {
 	for i in `seq 1 $1`;
 	do
-		polycubectl ctxwriter${i} add cw${i}_1 type=XDP_SKB loglevel=info
+		polycubectl ctxwriter${i} add cw${i}_1 type=TC loglevel=off
 	done
 }
 
 function add_mapwriters {
 	for i in `seq 1 $1`;
 	do
-		polycubectl mapwriter add mw$i type=XDP_SKB loglevel=info
+	    polycubectl mapwriter add mw$i type=TC loglevel=off
+	    #polycubectl mapwriter add mw$i type=TC loglevel=debug
 	done
 }
 
@@ -144,7 +208,7 @@ function add_mapwriters {
 function add_mapwriters_independant {
 	for i in `seq 1 $1`;
 	do
-		polycubectl mapwriter${i} add mw${i}_1 type=XDP_SKB loglevel=info
+		polycubectl mapwriter${i} add mw${i}_1 type=TC loglevel=off
 	done
 }
 
@@ -196,14 +260,32 @@ function ctxwriter_add_port {
 	polycubectl ctxwriter $1 ports $2 set peer=$2
 }
 
+function connect_module_with_next {
+    i=${1}
+    j=$((${i}+1))
+    prefix=${2}
+    polycubectl ${prefix}${i} ports add to_${prefix}${j}
+    polycubectl ${prefix}${j} ports add to_${prefix}${i}
+    polycubectl connect ${prefix}${i}:to_${prefix}${j} ${prefix}${j}:to_${prefix}${i}
+ }
+
+function connect_modules {
+
+    prefix=${2}
+    for i in `seq 1 $1`;
+    do
+	connect_module_with_next $i ${prefix}
+    done
+}
+
+
 
 function connect_ctxwriter_with_next {
     i=${1}
     j=$((${i}+1))
-    polycubectl cw${i} port
-    s add to_cw${j}
-	polycubectl cw${j} ports add to_cw${i}
-	polycubectl connect cw${i}:to_cw${j} cw${j}:to_cw${i}
+    polycubectl cw${i} ports add to_cw${j}
+    polycubectl cw${j} ports add to_cw${i}
+    polycubectl connect cw${i}:to_cw${j} cw${j}:to_cw${i}
 }
 
 function connect_ctxwriters {
@@ -263,6 +345,14 @@ function connect_mapwriters_independant {
     done
 }
 
+function connect_module_with_bridge {
+    i=$1
+    prefix=${2}
+    polycubectl ${prefix}${i} ports add to_br1
+    polycubectl br1 ports add to_${prefix}${i}
+    echo " Conencting to Bridge: polycubectl connect ${prefix}${i}:to_br1 br1:to_${prefix}${i} "
+    polycubectl connect ${prefix}${i}:to_br1 br1:to_${prefix}${i}
+}
 
 
 function connect_helloworld_with_bridge {
